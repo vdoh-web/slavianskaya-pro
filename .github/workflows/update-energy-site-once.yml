@@ -1,0 +1,55 @@
+name: Update energy site once
+on:
+  push:
+    paths:
+      - '.github/workflows/update-energy-site-once.yml'
+permissions:
+  contents: write
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Apply approved changes
+        shell: python
+        run: |
+          from pathlib import Path
+          import hashlib, re
+          p = Path('index.html')
+          data = p.read_bytes()
+          sha = hashlib.sha1(b'blob ' + str(len(data)).encode() + b'\0' + data).hexdigest()
+          assert sha == '4d059adf3bafcb55213bfa0eb29131b77c42788f', 'Source changed; refusing overwrite'
+          s = data.decode('utf-8')
+          s, removed = re.subn(r'<a\b[^>]*href="https://docs\.google\.com/forms/[^"]*"[^>]*>.*?</a>', '', s, flags=re.S)
+          assert removed == 6
+          old = 'https://cal.com/olesya-slavianskaya/30min'
+          assert s.count(old) == 8
+          s = s.replace(old, 'https://planerka.app/olesya-slavianskaya-arfhnu/diagnosticheskiy-razbor-indeks-4-energiy-vashey-komandy')
+          changes = {
+            'Записаться в Zoom': 'Бесплатная консультация',
+            'Авторская система управления четырьмя энергиями команды. За 3 минуты узнайте, где ваш бизнес теряет скорость, фокус и вовлечённость людей, и получите персональный план на 30-минутном разборе в Zoom.': 'Авторская система управления четырьмя энергиями команды. Обсудите, где ваш бизнес теряет скорость, фокус и вовлечённость людей, на 30-минутном онлайн-разборе.',
+            '16 вопросов, 3 минуты — и вы увидите, на каком этаже команда теряет силы. Результаты разберём вместе в Zoom.': 'На онлайн-встрече обсудим, где команда теряет силы и какие вопросы стоит исследовать подробнее.',
+            'Начните с аудита и 30-минутной встречи в Zoom, чтобы подобрать решение под масштаб задачи.': 'Начните с 30-минутной онлайн-встречи, чтобы обсудить решение под масштаб задачи.',
+            'Ответьте на 16 вопросов за 3 минуты и забронируйте личный разбор в Zoom.': 'Выберите удобное время и забронируйте личный онлайн-разбор.'
+          }
+          for a, b in changes.items():
+            s = s.replace(a, b)
+          s = s.replace('в Zoom', 'онлайн').replace('Zoom-разборе', 'онлайн-разборе')
+          assert 'id="requisites"' not in s
+          block = '<section id="requisites" style="padding:14px 0 0;margin-top:16px;border-top:1px solid #555;color:#9E9E9E;font-family:inherit;font-size:11px;line-height:1.35"><h2 style="font-size:11px;font-weight:400;color:inherit;margin:0 0 6px">Контакты и реквизиты</h2><p style="margin:0 0 5px">ИП Славянская Олеся Витальевна</p><p style="margin:0 0 5px">ИНН: 615511601204<br>ОГРНИП: 311618205500011</p><p style="margin:0">По вопросам услуг:<br><a href="mailto:topslavyanskaya@yandex.ru" style="color:inherit">topslavyanskaya@yandex.ru</a></p></section>'
+          assert s.count('</div></footer>') == 1
+          s = s.replace('</div></footer>', block + '</div></footer>')
+          assert 'cal.com/' not in s and 'docs.google.com/forms/' not in s
+          assert s.count('Бесплатная консультация') == 2
+          assert 'hero.jpg' in s and 'author.jpg' in s
+          p.write_text(s, encoding='utf-8')
+          Path('.github/workflows/update-energy-site-once.yml').unlink()
+      - name: Commit approved website changes
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add index.html .github/workflows/update-energy-site-once.yml
+          git commit -m 'Update booking, consultation buttons and business contacts'
+          git push origin HEAD:main
